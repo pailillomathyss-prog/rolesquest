@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "RolesQuest Panel"
+version = "1.0.0"
+id = "artifacts/roles-panel"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25618
+
+[services.development]
+run = "pnpm --filter @workspace/roles-panel run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/roles-panel", "run", "build" ]
+publicDir = "artifacts/roles-panel/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25618"
+BASE_PATH = "/"
