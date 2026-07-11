@@ -150,12 +150,25 @@ function RolesTab() {
 }
 
 /* ── Salon Tab ──────────────────────────────────────────── */
+const MY_ID_KEY = "rolesquest_my_discord_id";
+
 function SalonTab() {
+  const [myId, setMyId]         = useState(() => localStorage.getItem(MY_ID_KEY) ?? "");
+  const [editingId, setEditingId] = useState(false);
+  const [draftId, setDraftId]   = useState(myId);
   const [members, setMembers]   = useState<Member[]>([]);
   const [selected, setSelected] = useState<Member | null>(null);
   const [status, setStatus]     = useState<Status>("idle");
   const [msg, setMsg]           = useState("");
+  const [created, setCreated]   = useState<{ channelId: string; channelName: string } | null>(null);
   const [search, setSearch]     = useState("");
+
+  const saveMyId = () => {
+    const trimmed = draftId.trim();
+    setMyId(trimmed);
+    localStorage.setItem(MY_ID_KEY, trimmed);
+    setEditingId(false);
+  };
 
   const load = useCallback(async () => {
     setStatus("loading"); setMsg("");
@@ -169,36 +182,70 @@ function SalonTab() {
 
   useEffect(() => { load(); }, [load]);
 
-  const sendInvite = async () => {
-    if (!selected) return;
-    setStatus("loading"); setMsg("");
+  const createSalon = async () => {
+    if (!selected || !myId) return;
+    setStatus("loading"); setMsg(""); setCreated(null);
     try {
-      const res  = await fetch("/api/invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inviterId: "panel", targetId: selected.id, inviterName: "Panel RolesQuest" }) });
-      const data = await res.json() as { success?: boolean; error?: string };
+      const res  = await fetch("/api/salon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user1Id: myId, user2Id: selected.id }),
+      });
+      const data = await res.json() as { success?: boolean; channelId?: string; channelName?: string; error?: string };
       if (!res.ok || !data.success) { setStatus("error"); setMsg(data.error ?? "Erreur"); return; }
-      setStatus("success"); setMsg(`Invitation envoyée à ${selected.displayName} !`);
-      setTimeout(() => { setStatus("idle"); setSelected(null); }, 4000);
+      setStatus("success");
+      setCreated({ channelId: data.channelId!, channelName: data.channelName! });
     } catch { setStatus("error"); setMsg("Serveur inaccessible"); }
   };
+
+  const reset = () => { setStatus("idle"); setCreated(null); setSelected(null); setMsg(""); };
 
   const filtered = members.filter(m =>
     m.displayName.toLowerCase().includes(search.toLowerCase()) ||
     m.username.toLowerCase().includes(search.toLowerCase())
   );
 
+  const canCreate = !!myId && !!selected && status !== "loading";
+
   return (
     <div className="space-y-4">
-      {/* Info */}
-      <div className="rounded-xl border border-border bg-card p-3 space-y-1">
-        <p className="text-xs font-semibold text-white flex gap-2">🔒 Salon privé temporaire</p>
-        <p className="text-xs text-muted-foreground">La personne choisie reçoit un DM avec <strong>Accepter/Refuser</strong>. Si elle accepte, un salon est créé et supprimé après <strong>5 min d'inactivité</strong>.</p>
-        <p className="text-xs text-muted-foreground">Commande Discord : <code className="bg-muted px-1.5 py-0.5 rounded">-setpriv @utilisateur</code></p>
+
+      {/* Mon ID Discord */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Ton ID Discord</p>
+        {editingId || !myId ? (
+          <div className="flex gap-2">
+            <input
+              value={draftId}
+              onChange={e => setDraftId(e.target.value)}
+              placeholder="Ex : 123456789012345678"
+              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              onKeyDown={e => e.key === "Enter" && saveMyId()}
+            />
+            <button onClick={saveMyId} disabled={!draftId.trim()}
+              className="px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-semibold disabled:opacity-40 hover:bg-indigo-400 transition-colors">
+              OK
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-green-400 font-mono">{myId}</span>
+              <span className="text-green-400 text-xs">✓</span>
+            </div>
+            <button onClick={() => { setDraftId(myId); setEditingId(true); }}
+              className="text-xs px-2 py-1 rounded-lg bg-muted hover:bg-accent text-muted-foreground hover:text-white transition-colors">
+              Modifier
+            </button>
+          </div>
+        )}
+        {!myId && <p className="text-xs text-muted-foreground/60">Paramètres Discord → Avancés → Mode développeur → clic droit sur ton nom → Copier l'ID</p>}
       </div>
 
-      {/* Members */}
+      {/* Membres */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Choisir une personne</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Choisir la 2ᵉ personne</p>
           <button onClick={load} disabled={status === "loading"} className="text-xs px-2 py-1 rounded-lg bg-muted hover:bg-accent text-muted-foreground hover:text-white transition-colors disabled:opacity-40">
             {status === "loading" && members.length === 0 ? "…" : "↻"}
           </button>
@@ -206,7 +253,7 @@ function SalonTab() {
 
         {members.length > 5 && (
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Filtrer…"
-            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary" />
+            className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500" />
         )}
 
         {status === "loading" && members.length === 0 && (
@@ -223,15 +270,18 @@ function SalonTab() {
         )}
 
         {filtered.length > 0 && (
-          <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
             {filtered.map(m => (
-              <button key={m.id} onClick={() => setSelected(m)}
+              <button key={m.id} onClick={() => { setSelected(m); reset(); setSelected(m); }}
+                disabled={m.id === myId}
                 className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-all text-left ${
-                  selected?.id === m.id ? "border-indigo-500/60 bg-indigo-500/10 ring-1 ring-indigo-500/30" : "border-border hover:bg-muted"
+                  m.id === myId ? "opacity-30 cursor-not-allowed border-border" :
+                  selected?.id === m.id ? "border-indigo-500/60 bg-indigo-500/10 ring-1 ring-indigo-500/30" :
+                  "border-border hover:bg-muted"
                 }`}>
                 <Avatar member={m} size={8} />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{m.displayName}</p>
+                  <p className="text-sm font-semibold text-white truncate">{m.displayName}{m.id === myId ? " (toi)" : ""}</p>
                   <p className="text-xs text-muted-foreground truncate">@{m.username}</p>
                 </div>
                 {selected?.id === m.id && <span className="ml-auto text-indigo-400 text-lg">✓</span>}
@@ -241,36 +291,60 @@ function SalonTab() {
         )}
       </div>
 
-      {/* Selected preview */}
-      {selected && (
-        <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-3 flex items-center gap-3">
-          <Avatar member={selected} size={9} />
-          <div>
-            <p className="text-sm font-semibold text-white">{selected.displayName}</p>
-            <p className="text-xs text-muted-foreground">recevra une invitation en DM</p>
+      {/* Aperçu du salon */}
+      {selected && myId && (
+        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3 space-y-2">
+          <p className="text-xs text-muted-foreground font-semibold uppercase tracking-widest">Aperçu du salon</p>
+          <div className="flex items-center gap-2 text-sm font-mono text-indigo-300">
+            <span>#</span>
+            <span>privé-toi-{selected.username.toLowerCase().replace(/[^a-z0-9]/g, "-")}</span>
           </div>
+          <p className="text-xs text-muted-foreground">Visible uniquement par toi et <strong className="text-white">{selected.displayName}</strong> · Supprimé après <strong className="text-white">5 min</strong> d'inactivité</p>
         </div>
       )}
 
-      {/* Feedback */}
-      {status === "error" && (
-        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-red-400 flex gap-2 items-center">
-          ⚠️ {msg} <button onClick={() => setStatus("idle")} className="ml-auto hover:text-white">✕</button>
+      {/* Succès */}
+      {status === "success" && created && (
+        <div className="rounded-xl border border-green-500/40 bg-green-500/10 p-4 space-y-2">
+          <p className="text-green-400 font-semibold text-sm">✅ Salon privé créé !</p>
+          <p className="text-xs text-muted-foreground">Le salon <strong className="text-white font-mono">#{created.channelName}</strong> a été créé sur Discord.</p>
+          <p className="text-xs text-muted-foreground/60">ID : <span className="font-mono">{created.channelId}</span></p>
+          <button onClick={reset} className="mt-1 text-xs px-3 py-1.5 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400 transition-colors">
+            Créer un autre salon
+          </button>
         </div>
       )}
-      {status === "success" && (
-        <div className="rounded-xl border border-green-500/40 bg-green-500/10 p-3 text-sm text-green-400">📨 {msg}</div>
+
+      {/* Erreur */}
+      {status === "error" && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-red-400 flex gap-2 items-center">
+          ⚠️ {msg}
+          <button onClick={() => setStatus("idle")} className="ml-auto hover:text-white">✕</button>
+        </div>
       )}
 
       {/* CTA */}
-      <button onClick={sendInvite} disabled={!selected || status === "loading"}
-        className={`w-full py-4 rounded-xl font-bold text-base transition-all ${!selected || status === "loading" ? "bg-muted text-muted-foreground opacity-50 cursor-not-allowed" : "text-white bg-indigo-500 hover:bg-indigo-400 hover:scale-[1.02] active:scale-[0.98]"}`}
-        style={selected && status !== "loading" ? { boxShadow: "0 8px 28px rgba(99,102,241,0.35)" } : {}}>
-        {status === "loading"
-          ? <span className="flex items-center justify-center gap-2"><svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Envoi…</span>
-          : `💬 Inviter${selected ? ` ${selected.displayName}` : ""}`}
-      </button>
-      {!selected && status === "idle" && members.length > 0 && <p className="text-center text-xs text-muted-foreground">Sélectionne une personne</p>}
+      {status !== "success" && (
+        <button onClick={createSalon} disabled={!canCreate}
+          className={`w-full py-4 rounded-xl font-bold text-base transition-all ${!canCreate ? "bg-muted text-muted-foreground opacity-50 cursor-not-allowed" : "text-white bg-indigo-500 hover:bg-indigo-400 hover:scale-[1.02] active:scale-[0.98]"}`}
+          style={canCreate ? { boxShadow: "0 8px 28px rgba(99,102,241,0.35)" } : {}}>
+          {status === "loading"
+            ? <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Création…
+              </span>
+            : `🔒 Créer le salon avec${selected ? ` ${selected.displayName}` : "…"}`}
+        </button>
+      )}
+
+      {!myId && <p className="text-center text-xs text-muted-foreground">Entre ton ID Discord en premier</p>}
+      {myId && !selected && status !== "success" && members.length > 0 && <p className="text-center text-xs text-muted-foreground">Sélectionne une personne</p>}
+
+      {/* Info commande Discord */}
+      <div className="rounded-xl border border-border bg-card/50 p-3 text-xs text-muted-foreground flex items-center gap-2">
+        <span>💡</span>
+        <span>Commande Discord : <code className="bg-muted px-1.5 py-0.5 rounded">-setpriv @utilisateur</code></span>
+      </div>
     </div>
   );
 }
