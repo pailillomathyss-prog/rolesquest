@@ -21,16 +21,16 @@ async function buildAll() {
     outdir: distDir,
     outExtension: { ".js": ".mjs" },
     logLevel: "info",
+    // Only externalize truly unbundleable packages (native .node addons, optional
+    // build-time binaries, etc.).  discord.js and its sub-packages are pure ESM
+    // and must be BUNDLED so the production image does not need node_modules at
+    // runtime (ESM top-level imports cannot be caught with try/catch).
     external: [
-      // Discord.js and its sub-packages — must stay external (native bindings)
-      "discord.js",
-      "@discordjs/*",
+      // Optional native WebSocket performance boosts — discord.js handles their
+      // absence gracefully with a try/catch, so leaving them external is fine.
       "bufferutil",
       "utf-8-validate",
-      "sodium",
-      "sodium-native",
-      "tweetnacl",
-      // Native / platform-specific
+      // Other optional native / platform-specific modules
       "*.node",
       "sharp",
       "canvas",
@@ -43,14 +43,12 @@ async function buildAll() {
       "dtrace-provider",
       "isolated-vm",
       "lightningcss",
-      // DB drivers not in use
-      "better-sqlite3",
-      "sqlite3",
       "pg-native",
       "oracledb",
       "mongodb-client-encryption",
       "mysql2",
-      // Heavy / optional
+      "better-sqlite3",
+      "sqlite3",
       "nodemailer",
       "handlebars",
       "knex",
